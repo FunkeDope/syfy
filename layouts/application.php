@@ -28,68 +28,80 @@
     
     <!-- PHP CALL To Database -->
     <?php
-		$con = mysql_connect("localhost","root","");
-		if (!$con)
-			die('Could not connect: ' . mysql_error());
+		require_once "includes/dbConnect.php";
 		
-		mysql_select_db("syfy", $con);
-		
-		$result = mysql_query("SELECT * FROM syfy");
-		
-		$i = 0;
-		while($row = mysql_fetch_array($result))
-		{
-			$movies[$i] = array(
-				"title"		=> $row["title"],
-				"subdes"	=> $row["subdes"],
-				"des"		=> $row["des"],
-				"img"		=> $row["img"]);
-			$i++;
-		}
-		$movienum = rand(0, sizeof($movies)-1);
-		$seen = array();
-		array_push($seen, $movienum);
-		$movie = $movies[$movienum];
-		list($width, $height, $type, $attr) = getimagesize("img/poster/".$movie['img']);
-		
-		$letters = array();
-		for($i = 0; $i < strlen($movie["title"]); $i++)
-			$letters[$i] = strtoupper(substr($movie["title"], $i, 1));
-		
+		require_once "includes/getMovies.php";
     ?>
+   
     <div id="poster">
-   		<img src="img/poster/<?php echo $movie['img']; ?>" alt="poster"/>
-        <p id="tagline" style="width:<?php echo $width;?>px"><?php echo $movie['subdes'] ?></p>
+   		<a id="newmovie" href="#"><img src="img/poster/_placeholder.png" alt="poster"/></a>
+        <p id="tagline">Description</p>
     </div>
-    <div id="description" style="width:<?php echo $width;?>px">
-        <p><?php echo $movie['des']; ?></p>
+    <div id="description">
+        <p>Description</p>
     </div>
     <div id="title">
     	<h3>Guess the title:</h3>
-        <?php
-			foreach ($letters as $letter)
-			{
-				if($letter == " ")
-					echo '<div class="space"></div>';
-				else if(!ctype_alpha($letter))
-					echo '<div class="letter">' . $letter . '</div>';
-				else
-					echo '<div class="letter"><span class="hide">' . ord($letter) . '</span></div>';
-			}
-		?>
+        <span id="letters">
+        </span>
     </div>
+    <div id="debug"></div>
 </div>
 <footer>
 
 </footer>
 
 <script>
+var uniqueLetters = new Array();
+var correctLetters = new Array();
+var winCount = 0;
+
 $(document).ready(function(e) {
+	
 	newMovie();
+	
+	$("#newmovie").click(function(e){
+		newMovie();
+	})
 	
 	function newMovie()
 	{
-		
+		$.ajax({
+			url		: "ajax/getMovie.php",
+			success	: function(data)
+			{
+				movie = $.parseJSON(data);
+				console.log(movie);
+				$("#poster img").attr("src", "img/poster/" + movie.poster);
+				$("#poster p").width(movie.width);
+				$("#poster p").html(movie.subdes);
+				
+				$("#description").width(movie.width);
+				$("#description p").html(movie.des);
+				
+				var letters = "";
+				for (i = 0; i < movie.letters.length; i++)
+				{
+					if(movie.letters[i] == 32) //space
+						letters += '<span class="space"></span>';
+					else if	(movie.letters[i] < 60 || movie.letters[i] > 90) //some non-letter
+						letters += '<span class="letter">' +String.fromCharCode(movie.letters[i]) + '</span>';		
+					else
+					{
+						letters += '<div class="letter"><span class="hide">' + movie.letters[i] + '</span></div>';
+						if($.inArray(movie.letters[i], uniqueLetters) == -1)
+							uniqueLetters.push(movie.letters[i]);
+					}
+				}
+				$("#title #letters").html(letters);
+				
+				var debug = "winCount: " + winCount + "<br/>Movie IDs seen:<br/>";
+				for(i = 0; i < movie.seen.length; i++)
+					debug += movie.seen[i] + "<br/>";
+				
+				$("#debug").html(debug);
+			}
+		})
 	}
 	
 	
@@ -97,10 +109,9 @@ $(document).ready(function(e) {
 	var good = new Audio("assets/good.wav");
 	var bad = new Audio("assets/bad.wav");
 	$(document).keydown(function(e){
-		var match = false;
 		if(e.keyCode >= 60 && e.keyCode <= 90)
 		{
-			match = false;
+			var match = false;
 			$(".letter span").each(function(index){
 				if($(this).html() == e.keyCode)
 				{
@@ -110,6 +121,9 @@ $(document).ready(function(e) {
 			})
 			if(match)
 			{
+				if($.inArray(movie.letters[i], e.keyCode) == -1)
+					correctLetters.push(e.keyCode);
+				
 				good.currentTime = 0;
 				good.play();
 			}
@@ -117,6 +131,16 @@ $(document).ready(function(e) {
 			{
 				bad.currentTime = 0;
 				bad.play();
+			}
+			
+			//YOU WIN!
+			if(correctLetters.length >= uniqueLetters.length)
+			{
+				alert("YOU WIN");
+				uniqueLetters = new Array();
+				correctLetters = new Array();
+				winCount++;
+				newMovie();
 			}
 		}
 	}); 
